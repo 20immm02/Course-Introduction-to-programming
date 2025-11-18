@@ -144,3 +144,94 @@ ylabel('Mean Pearson Correlation');
 title('Prediction Accuracy Over Time (average across channels)');
 legend('show', 'Location', 'best');
 set(gca, 'FontSize', 18);
+
+hold off
+
+%% Task 2
+% Train 4 encoding models with either 25, 50, 75 or 100 
+% DNN features. Test them on the same data. Plot their predicition
+% accuracies.
+
+% Define the number of DNN-features
+featureSizes = [25, 50, 75, 100];
+rng(0);
+
+% Define the data dimension size 
+[numTrials, numChannels, numTime] = size(eeg_train);
+totalFeatures = size(dnn_train, 2);
+
+numSizes = numel(featureSizes); % number of models to be trained
+colors = lines(numSizes);
+
+% Storage for correlations
+R_all_features = zeros(numSizes, numChannels, numTime);
+meanR_all_features = zeros(numSizes, numTime);
+
+for i = 1:numSizes
+    F = featureSizes(i); % number of DNN features
+    fprintf('Training with F = %d features (%d/%d)\n', F, i, numSizes);
+    
+    % select random indices for DNN features
+    idx_feat = randperm(totalFeatures, F);
+    dnn_train_sub = dnn_train(:, idx_feat);
+    dnn_test_sub = dnn_test(:, idx_feat);
+    eeg_train_sub = eeg_train;
+    
+    % define number of features
+    currentFeatures = F;
+    
+    % train models
+    W = zeros(currentFeatures, numChannels, numTime);
+    b = zeros(numChannels, numTime);
+    
+    for ch = 1:numChannels
+        for t = 1:numTime
+            y = eeg_train_sub(:, ch, t);
+            mdl = fitlm(dnn_train_sub, y);
+            
+            % Save parameters
+            W(:, ch, t) = mdl.Coefficients.Estimate(2:end); % weights
+            b(ch, t)    = mdl.Coefficients.Estimate(1);     % intercept
+        end
+    end
+    
+    % predict on test data
+    for ch = 1:numChannels
+        for t = 1:numTime
+            eeg_test_pred(:, ch, t) = dnn_test_sub * W(:, ch, t) + b(ch, t);
+        end
+    end
+    [Ntest, Nchannels, Ntime] = size(eeg_test);
+    R = zeros(Nchannels, Ntime);
+    for ch = 1:Nchannels
+        for t = 1:numTime
+            real_vec = squeeze(eeg_test(:, ch, t));
+            pred_vec = squeeze(eeg_test_pred(:, ch, t));
+            R(ch, t) = corr(real_vec, pred_vec, 'Type', 'Pearson');
+        end
+    end
+
+    % save results
+    R_all_features(i, :, :) = R;
+    meanR_all_features(i, :) = squeeze(mean(R, 1));
+end
+
+% plot
+figure;
+hold on;
+
+for p = 1:numSizes
+    plot(1:numTime, meanR_all_features(p, :), 'Color', colors(p, :), 'LineWidth', 2, ...
+        'DisplayName', sprintf('%d DNN features', featureSizes(p)));
+end
+
+xlabel('Time (seconds)');
+xticks(1:numTime); xticklabels(times);
+ylabel('Mean Pearson Correlation');
+legend('show', 'Location', 'best');
+title('Prediction Accuracy Over Time (Effect of DNN Features)');
+set(gca, 'FontSize', 16);
+
+hold off
+            
+
